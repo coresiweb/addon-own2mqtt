@@ -1,0 +1,31 @@
+{
+  "name": "own2mqtt",
+  "version": "0.1",
+  "slug": "own2mqtt",
+  "description": "Client to OpenWebNet Server",
+  "url": "https://github.com/coresiweb/own2mqtt",
+  "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
+  "startup": "application",
+  "boot": "auto",
+  "options": {
+    "own_server_ip": "",
+    "own_server_port": 20000,
+    "own_server_password": "",
+    "mqtt_server_ip": "",
+    "mqtt_server_port": 1883,
+    "mqtt_server_user": "",
+    "mqtt_server_password": "",
+    "log_level": "INFO"
+  },
+  "schema": {
+    "own_server_ip": "str",
+    "own_server_port": "int",
+    "own_server_password": "str",
+    "mqtt_server_ip": "str",
+    "mqtt_server_port": "int",
+    "mqtt_server_user": "str",
+    "mqtt_server_password": "str",
+    "log_level": "match(^(TRACE|DEBUG|INFO|NOTICE|WARNING|ERROR|FATAL)$)?"
+  },
+  "image": "coresi/{arch}-own2mqtt"
+}
