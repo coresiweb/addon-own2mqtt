@@ -3,7 +3,7 @@
   "version": "0.1",
   "slug": "own2mqtt",
   "description": "Client to OpenWebNet Server",
-  "url": "https://github.com/coresiweb/own2mqtt",
+  "url": "https://github.com/coresiweb/addon-own2mqtt",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
   "startup": "application",
   "boot": "auto",
