@@ -1,6 +1,6 @@
 {
   "name": "own2mqtt",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "slug": "own2mqtt",
   "description": "Client to OpenWebNet Server",
   "url": "https://github.com/coresiweb/addon-own2mqtt",
