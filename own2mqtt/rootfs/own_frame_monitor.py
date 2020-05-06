@@ -4,7 +4,7 @@ from time import time
 
 
 class OWNFrameMonitor:
-    def __init__(self, frame, mqtt_client):
+    def __init__(self, frame, own_instance):
         self.frame = frame
         self.frame_type = None
         self.who = None
@@ -14,51 +14,59 @@ class OWNFrameMonitor:
         self.where_param = None
         self.dimension = None
         self.dimension_value = None
-        self.mqtt_client = mqtt_client
-        self.readFrame()
+        self.dimension_list = {}
+        self.own_instance = own_instance
+        self.mqtt_client = own_instance.mqtt_client
+        self.mqtt_base_topic = own_instance.mqtt_base_topic
+        self.read_frame()
 
-    def readFrame(self):
-        state_command_match = regex.search(r"^\*(?P<who>\d+)\*(?P<what>\d+)(#(?P<what_param>\d+))*\*(?P<where>\d+)(#(?P<where_param>\d+))*##$", self.frame)
+    def read_frame(self):
+        logging.debug('RX: %s', self.frame)
+        state_command_regex = r"^\*(?P<who>\d+)\*(?P<what>\d+)(#(?P<what_param>\d+))*\*(?P<where>\d+)(#(?P<where_param>\d+))*##$"
+        state_command_match = regex.search(state_command_regex, self.frame)
         if state_command_match:
-            self.typeStateCommand(state_command_match)
+            self.type_state_command(state_command_match)
         else:
-            state_request_match = regex.search(r"^\*#(?P<who>\d+)\*(?P<where>\d+)##$", self.frame)
+            state_request_regex = r"^\*#(?P<who>\d+)\*(?P<where>\d+)##$"
+            state_request_match = regex.search(state_request_regex, self.frame)
             if state_request_match:
-                self.typeStateRequest(state_request_match)
+                self.type_state_request(state_request_match)
             else:
-                dimension_request_match = regex.search(r"^\*#(?P<who>\d+)\*(?P<where>\d+)\*(?P<dimension>\d+)\*?((?P<dimension_value>\d+)\*?)*##$", self.frame)
+                dimension_request_regex = r"^\*#(?P<who>\d+)\*(?P<where>\d+)\*(?P<dimension>\d+)\*?((?P<dimension_value>\d+)\*?)*##$"
+                dimension_request_match = regex.search(dimension_request_regex, self.frame)
                 if dimension_request_match:
-                    self.typeDimensionRequest(dimension_request_match)
+                    self.type_dimension_request(dimension_request_match)
                 else:
-                    dimension_write_match = regex.search(r"^\*#(?P<who>\d+)\*(?P<where>\d+)\*#(?P<dimension>\d+)\*?((?P<dimension_value>\d+)\*?)*##$", self.frame)
+                    dimension_write_regex = r"^\*#(?P<who>\d+)\*(?P<where>\d+)\*#(?P<dimension>\d+)\*?((?P<dimension_value>\d+)\*?)*##$"
+                    dimension_write_match = regex.search(dimension_write_regex, self.frame)
                     if dimension_write_match:
-                        self.typeDimensionWrite(dimension_write_match)
-                    else:
-                        logging.info('RX: %s', self.frame)
+                        self.type_dimension_write(dimension_write_match)
 
-    def typeStateCommand(self, match):
+    def type_state_command(self, match):
         self.frame_type = 'state_command'
         self.who = match.group('who')
         self.what = match.group('what')
         self.what_param = match.captures('what_param')
         self.where = match.group('where')
         self.where_param = match.captures('where_param')
-        # logging.debug(self.__explainStateCommandFrame())
+        logging.debug(self.__explain_state_command_frame())
 
         if self.who == '1':
-            self.mqttStateCommandWho1()
+            self.mqtt_state_command_who_1()
         elif self.who == '2':
-            self.mqttStateCommandWho2()
+            self.mqtt_state_command_who_2()
+        elif self.who == '4':
+            self.mqtt_state_command_who_4()
         elif self.who == '25':
-            self.mqttStateCommandWho25()
+            self.mqtt_state_command_who_25()
 
-    def typeStateRequest(self, match):
+    def type_state_request(self, match):
         self.frame_type = 'state_request'
         self.who = match.group('who')
         self.where = match.group('where')
-        # logging.debug(self.__explainStateCommandFrame())
+        logging.debug(self.__explain_state_request_frame())
 
-    def typeDimensionRequest(self, match):
+    def type_dimension_request(self, match):
         self.frame_type = 'dimension_request'
         self.who = match.group('who')
         self.where = match.group('where')
@@ -66,20 +74,24 @@ class OWNFrameMonitor:
         self.dimension_value = match.captures('dimension_value')
 
         if self.who == '1':
-            self.mqttDimensionRequestWho1()
+            self.mqtt_dimension_request_who_1()
         elif self.who == '2':
-            self.mqttDimensionRequestWho2()
+            self.mqtt_dimension_request_who_2()
+        elif self.who == '4':
+            self.mqtt_dimension_request_who_4()
 
-    def typeDimensionWrite(self, match):
+    def type_dimension_write(self, match):
         self.frame_type = 'dimension_write'
         self.who = match.group('who')
         self.where = match.group('where')
         self.dimension = match.group('dimension')
         self.dimension_value = match.captures('dimension_value')
 
-    def mqttStateCommandWho1(self):
+        self.__explain_dimension_write_frame()
+
+    def mqtt_state_command_who_1(self):
         if self.what == '34':
-            self.mqtt_client.publish(f"openwebnet/who-1/{self.where}/presence", payload='ON', qos=0, retain=False)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/presence", payload='ON', qos=0, retain=False)
         else:
             if self.what == '1':
                 state = 'ON'
@@ -87,10 +99,10 @@ class OWNFrameMonitor:
                 state = 'OFF'
             else:
                 state = self.what
-                logging.debug(self.__explainStateCommandFrame())
-            self.mqtt_client.publish(f"openwebnet/who-1/{self.where}/state", payload=state, qos=0, retain=True)
+                logging.debug(self.__explain_state_command_frame())
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/state", payload=state, qos=0, retain=True)
 
-    def mqttStateCommandWho2(self):
+    def mqtt_state_command_who_2(self):
         if self.what == '1000':
             if self.what_param == ['0']:
                 state = 'stop'
@@ -100,10 +112,25 @@ class OWNFrameMonitor:
                 state = 'closed'
             else:
                 state = self.what_param
-                logging.debug(self.__explainStateCommandFrame())
-            self.mqtt_client.publish(f"openwebnet/who-2/{self.where}/state", payload=state, qos=0, retain=True)
+                logging.debug(self.__explain_state_command_frame())
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=0, retain=True)
 
-    def mqttStateCommandWho25(self):
+    def mqtt_state_command_who_4(self):
+        if self.what == '4002':
+            return
+        else:
+            if self.what == '1':
+                mode = 'heat'
+            elif self.what == '0':
+                mode = 'cool'
+            else:
+                mode = 'off'
+            self.own_instance.thermo_zones[self.where]['current_mode'] = mode
+            self.own_instance.thermo_zones[self.where]['raw_mode'] = self.what
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/mode/current", payload=mode, qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/mode/raw", payload=self.what, qos=0, retain=True)
+
+    def mqtt_state_command_who_25(self):
         if self.what == '21':
             pressure = 'short'
         elif self.what == '22':
@@ -114,23 +141,24 @@ class OWNFrameMonitor:
             pressure = 'endextend'
         else:
             pressure = self.what
-            logging.debug(self.__explainStateCommandFrame())
-        self.mqtt_client.publish(f"openwebnet/who-25/{pressure}", payload=f"{self.where}-{self.what_param[0]}", qos=0,
+            logging.debug(self.__explain_state_command_frame())
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-25/{pressure}", payload=f"{self.where}-{self.what_param[0]}", qos=0,
                                  retain=False)
-        self.mqtt_client.publish(f"openwebnet/who-25/{self.where}/{self.what_param[0]}/{pressure}",
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-25/{self.where}/{self.what_param[0]}/{pressure}",
                                  payload=int(time() * 1000), qos=0, retain=False)
 
-    def mqttDimensionRequestWho1(self):
+    def mqtt_dimension_request_who_1(self):
         self.dimension_list = {
             'lightIntesity': self.dimension_value[0]
         }
 
         if self.dimension == '6':
-            self.mqtt_client.publish(f"openwebnet/who-1/{self.where}/light", payload=self.dimension_list['lightIntesity'], qos=0, retain=False)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/light",
+                                     payload=self.dimension_list['lightIntesity'], qos=0, retain=False)
 
-        logging.debug(self.__explainDimensionRequestFrame())
+        logging.debug(self.__explain_dimension_request_frame())
 
-    def mqttDimensionRequestWho2(self):
+    def mqtt_dimension_request_who_2(self):
         self.dimension_list = {
             'shutterStatus': self.dimension_value[0],
             'shutterLevel': self.dimension_value[1],
@@ -147,22 +175,40 @@ class OWNFrameMonitor:
         else:
             state = self.dimension_list['shutterStatus']
 
-        self.mqtt_client.publish(f"openwebnet/who-2/{self.where}/state", payload=state, qos=0, retain=True)
-        self.mqtt_client.publish(f"openwebnet/who-2/{self.where}/position", payload=self.dimension_list['shutterLevel'], qos=0, retain=True)
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=0, retain=True)
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/position", payload=self.dimension_list['shutterLevel'],
+                                 qos=0, retain=True)
 
-        logging.debug(self.__explainDimensionRequestFrame())
+        logging.debug(self.__explain_dimension_request_frame())
 
-    def __explainStateCommandFrame(self):
+    def mqtt_dimension_request_who_4(self):
+        if self.dimension == '0':
+            temperature = int(self.dimension_value[0]) / 10.0
+            self.dimension_list = {
+                'temperature': temperature,
+            }
+            self.own_instance.thermo_zones[self.where]['current_temperature'] = temperature
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/current", payload=self.dimension_list['temperature'], qos=0, retain=True)
+        if self.dimension == '14':
+            temperature = int(self.dimension_value[0]) / 10.0
+            self.dimension_list = {
+                'target_temperature': temperature,
+            }
+            self.own_instance.thermo_zones[self.where]['target_temperature'] = temperature
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target", payload=self.dimension_list['target_temperature'], qos=0, retain=True)
+        logging.debug(self.__explain_dimension_request_frame())
+
+    def __explain_state_command_frame(self):
         return "TYPE: STATE_COMMAND | WHO: %s | WHAT: %s | WHAT_PARAM: %s | WHERE: %s | WHERE_PARAM: %s (%s)" % (
             self.who, self.what, ', '.join(self.what_param), self.where, ', '.join(self.where_param), self.frame)
 
-    def __explainStateRequestFrame(self):
+    def __explain_state_request_frame(self):
         return "TYPE: STATE_REQUEST | WHO: %s | WHERE: %s (%s)" % (self.who, self.where, self.frame)
 
-    def __explainDimensionRequestFrame(self):
+    def __explain_dimension_request_frame(self):
         return "TYPE: DIMENSION_REQUEST | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s (%s)" % (
             self.who, self.where, self.dimension, self.dimension_list, self.frame)
 
-    def __explainDimensionWriteFrame(self):
+    def __explain_dimension_write_frame(self):
         return "TYPE: DIMENSION_WRITE | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s (%s)" % (
             self.who, self.where, self.dimension, ', '.join(self.dimension_value), self.frame)

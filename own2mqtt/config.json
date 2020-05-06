@@ -15,7 +15,10 @@
     "mqtt_server_port": 1883,
     "mqtt_server_user": "",
     "mqtt_server_password": "",
-    "log_level": "INFO"
+    "log_level": "INFO",
+    "mqtt_client_name": "own2mqtt",
+    "mqtt_base_topic": "openwebnet",
+    "thermo_zones": []
   },
   "schema": {
     "own_server_ip": "str",
@@ -25,7 +28,10 @@
     "mqtt_server_port": "int",
     "mqtt_server_user": "str",
     "mqtt_server_password": "str",
-    "log_level": "match(^(TRACE|DEBUG|INFO|NOTICE|WARNING|ERROR|FATAL)$)?"
+    "log_level": "match(^(TRACE|DEBUG|INFO|NOTICE|WARNING|ERROR|FATAL)$)?",
+    "mqtt_client_name": "str",
+    "mqtt_base_topic": "str",
+    "thermo_zones": ["match(^[0-9]$)"]
   },
   "image": "coresi/{arch}-own2mqtt"
 }
