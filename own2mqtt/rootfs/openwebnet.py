@@ -1,4 +1,4 @@
-import socket, hashlib, regex, os, binascii, logging
+import socket, hashlib, regex, os, binascii, logging, regex
 from own_frame_monitor import OWNFrameMonitor
 from own_frame_command import OWNFrameCommand
 from threading import Thread
@@ -6,6 +6,7 @@ from resettabletimer import ResettableTimer
 
 TYPE_OF_MONITOR = 'MONITOR'
 TYPE_OF_COMMAND = 'COMMAND'
+
 
 class OpenWebNet(Thread):
     def __init__(self, type_of, mqtt_client, options):
@@ -22,6 +23,12 @@ class OpenWebNet(Thread):
         self.KEEP_ALIVE = self.ACK
         self.type_of = type_of
         self.mqtt_client = mqtt_client
+        self.mqtt_base_topic = options['mqtt_base_topic']
+        self.thermo_zones = {}
+        for thermo_zone in options['thermo_zones']:
+            self.thermo_zones[str(thermo_zone)] = {}
+        self.sock = None
+        self.keep_alive_timer = None
 
     def run(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -43,55 +50,57 @@ class OpenWebNet(Thread):
 
                 if self.__authenticate():
                     logging.info('%s started', self.type_of)
-                    
+
                     if self.type_of == TYPE_OF_MONITOR:
                         self.monitor()
                     elif self.type_of == TYPE_OF_COMMAND:
                         self.command()
 
     def monitor(self):
+        self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=b'*#1*0##', qos=0, retain=False)
+        for thermo_zone in self.thermo_zones.keys():
+            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=('*#4*%s##' % thermo_zone).encode(), qos=0, retain=False)
         while True:
-            data_received = self.sock.recv(4096).decode()
-            if data_received == b'':
-                return
-            else:
-                frame = OWNFrameMonitor(data_received, self.mqtt_client)
-                self.mqtt_client.publish('openwebnet/last_frame', payload=frame.frame, qos=0, retain=False)
+            frames = self.read_socket()
+            for frame in frames:
+                OWNFrameMonitor(frame, self)
+                self.mqtt_client.publish(f'{self.mqtt_base_topic}/last_frame', payload=frame, qos=0, retain=False)
 
     def command(self):
-        self.timer = ResettableTimer(25.0, self.sendKeepAlive)
-        self.timer.start()
+        self.keep_alive_timer = ResettableTimer(25.0, self.send_keep_alive)
+        self.keep_alive_timer.start()
 
         topics = [
-            ('openwebnet/command_frame', 0),
-            ('openwebnet/who-1/+/command', 0),
-            ('openwebnet/who-2/+/command', 0),
-            ('openwebnet/who-2/+/set_position', 0),
+            (f'{self.mqtt_base_topic}/command_frame', 0),
+            (f'{self.mqtt_base_topic}/who-1/+/command', 0),
+            (f'{self.mqtt_base_topic}/who-2/+/command', 0),
+            (f'{self.mqtt_base_topic}/who-2/+/set_position', 0),
+            (f'{self.mqtt_base_topic}/who-4/zones/+/mode/set', 0),
+            (f'{self.mqtt_base_topic}/who-4/zones/+/temperature/set', 0),
         ]
-        self.mqtt_client.on_message=self.on_message
+        self.mqtt_client.on_message = self.on_message
         self.mqtt_client.subscribe(topics)
         self.mqtt_client.loop_forever()
 
     def on_message(self, client, userdata, message):
         logging.debug('MQTT: TOPIC: %s | PAYLOAD: %s', message.topic, message.payload)
-        OWNFrameCommand(client, self.sock, self.timer, message.topic, message.payload)
+        OWNFrameCommand(self, message.topic, message.payload)
+        self.keep_alive_timer.reset()
 
-    def sendKeepAlive(self):
-        self.sock.send(self.KEEP_ALIVE)
-        logging.debug(b'KA: %b' % self.KEEP_ALIVE)
-        data_received = self.sock.recv(256)
-        logging.debug(b'RX: %b' % data_received)
-        self.timer.reset()
+    def send_keep_alive(self):
+        self.write_socket(self.KEEP_ALIVE)
+        self.read_socket()
+        self.keep_alive_timer.reset()
 
     def __authenticate(self):
         logging.info('Authenticating...')
-        rb_hex = self.__createRbHex()
-        rb = self.__hexToDecimalString(rb_hex)
+        rb_hex = self.__create_rb_hex()
+        rb = self.__hex_to_decimal_string(rb_hex)
         ra_search = regex.search(
             r'\*#(\d{128})##', self.sock.recv(4096).decode())
         if not ra_search:
             return False
-        ra_hex = self.__decimalStringToHex(ra_search.group(1))
+        ra_hex = self.__decimal_string_to_hex(ra_search.group(1))
         kab_hex = hashlib.sha256(self.own_password.encode()).hexdigest()
 
         client_hash = hashlib.new('sha256')
@@ -101,7 +110,7 @@ class OpenWebNet(Thread):
         client_hash.update(self.B_HEX.encode())
         client_hash.update(kab_hex.encode())
         client_digest = client_hash.hexdigest()
-        client_digest_dec = self.__hexToDecimalString(client_digest)
+        client_digest_dec = self.__hex_to_decimal_string(client_digest)
 
         client_message = "*#%s*%s##" % (rb, client_digest_dec)
         self.sock.send(client_message.encode())
@@ -111,7 +120,7 @@ class OpenWebNet(Thread):
         server_hash.update(rb_hex.encode())
         server_hash.update(kab_hex.encode())
         server_digest = server_hash.hexdigest()
-        server_digest_dec = self.__hexToDecimalString(server_digest)
+        server_digest_dec = self.__hex_to_decimal_string(server_digest)
         server_message = "*#%s##" % server_digest_dec
 
         if self.sock.recv(4096) == server_message.encode():
@@ -120,16 +129,34 @@ class OpenWebNet(Thread):
             return True
         return False
 
-    def __createRbHex(self):
+    def read_socket(self):
+        try:
+            data_received = ''
+            while not data_received.endswith('##'):
+                data_received = data_received + self.sock.recv(32).decode()
+            return regex.findall(r"\*[#]?[\d\*]+[#]?[\d\*]+##", data_received)
+        except ConnectionResetError as e:
+            self.run()
+
+    def write_socket(self, content):
+        try:
+            self.sock.send(self.KEEP_ALIVE)
+        except BrokenPipeError as e:
+            self.run()
+
+    @staticmethod
+    def __create_rb_hex():
         return binascii.hexlify(os.urandom(32)).decode()
 
-    def __decimalStringToHex(self, s):
+    @staticmethod
+    def __decimal_string_to_hex(s):
         hex_string = ''
         for (subchars) in regex.findall('..', s):
             hex_string += hex(int(subchars))[2:]
         return hex_string
 
-    def __hexToDecimalString(self, h):
+    @staticmethod
+    def __hex_to_decimal_string(h):
         dec_string = ''
         for (subchars) in regex.findall('.', h):
             dec_string += '{0:02d}'.format(int(subchars, 16))
