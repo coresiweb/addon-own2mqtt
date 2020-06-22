@@ -1,0 +1,13 @@
+{
+  "own_server_ip": "192.168.178.4",
+  "own_server_port": 20000,
+  "own_server_password": "Romania14",
+  "mqtt_server_ip": "192.168.178.101",
+  "mqtt_server_port": 1883,
+  "mqtt_server_user": "marco.lettica",
+  "mqtt_server_password": "yfo2&cQZ8ooq",
+  "log_level": "DEBUG",
+  "mqtt_client_name": "own2mqtt-dev",
+  "mqtt_base_topic": "openwebnet-dev",
+  "thermo_zones": [2, 5, 7, 9, 11]
+}

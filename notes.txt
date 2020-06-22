@@ -1,0 +1,15 @@
+Comando Hassio Builder
+
+docker run --rm --privileged homeassistant/amd64-builder --all -t own2mqtt -r https://github.com/coresiweb/addon-own2mqtt -b build --docker-user marcolettica --docker-password "vJdAESwFo;0i3vw"
+
+docker run --rm --privileged homeassistant/amd64-builder --all -t btalarm2mqtt -r https://github.com/coresiweb/addon-btalarm2mqtt -b build --docker-user marcolettica --docker-password "vJdAESwFo;0i3vw"
+
+docker run -it --rm hassioaddons/repository-updater:latest --token 2b0ccd1f92c0a0b24b22978a66f26a12214a9e4a --repository "coresiweb/ha-addons-repository"
+
+
+
+Token: 2b0ccd1f92c0a0b24b22978a66f26a12214a9e4a
+Repo:
+
+
+repository-updater  --token 2b0ccd1f92c0a0b24b22978a66f26a12214a9e4a --repository "coresiweb/ha-addons-repository"

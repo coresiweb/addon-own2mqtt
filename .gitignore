@@ -129,6 +129,3 @@ dmypy.json
 .pyre/
 .DS_Store
 /.idea/
-
-options.json
-notes.txt
