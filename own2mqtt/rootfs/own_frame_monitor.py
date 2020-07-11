@@ -2,7 +2,6 @@ import regex
 import logging
 from time import time
 
-
 class OWNFrameMonitor:
     def __init__(self, frame, own_instance):
         self.frame = frame
@@ -79,6 +78,8 @@ class OWNFrameMonitor:
             self.mqtt_dimension_request_who_2()
         elif self.who == '4':
             self.mqtt_dimension_request_who_4()
+        elif self.who == '18':
+            self.mqtt_dimension_request_who_18()
 
     def type_dimension_write(self, match):
         self.frame_type = 'dimension_write'
@@ -197,6 +198,12 @@ class OWNFrameMonitor:
             self.own_instance.thermo_zones[self.where]['target_temperature'] = temperature
             self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target", payload=self.dimension_list['target_temperature'], qos=0, retain=True)
         logging.debug(self.__explain_dimension_request_frame())
+
+    def mqtt_dimension_request_who_18(self):
+        if self.dimension == '113':
+
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/activepower", payload=self.dimension_value[0], qos=0,
+                                     retain=True)
 
     def __explain_state_command_frame(self):
         return "TYPE: STATE_COMMAND | WHO: %s | WHAT: %s | WHAT_PARAM: %s | WHERE: %s | WHERE_PARAM: %s (%s)" % (
