@@ -102,27 +102,3 @@ class OWNFrameCommand:
 
             if response_frames[0] == self.own_instance.ACK.decode():
                 self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=self.payload, qos=0, retain=True)
-
-
-    # def send_frame_who_4(self):
-    #     self.where = self.topic_parts[3]
-    #     temperature = self.own_instance.thermo_zones[self.where]['target_temperature']
-    #     mode = self.own_instance.thermo_zones[self.where]['raw_mode']
-    #
-    #     if self.topic_parts[4] == 'mode':
-    #         if self.payload == b'heat':
-    #             mode = '1'
-    #         elif self.payload == b'cool':
-    #             mode = '2'
-    #         elif self.payload == b'off':
-    #             mode = '102'
-    #     elif self.topic_parts[4] == 'temperature':
-    #         temperature = '0%s' % str(int(self.payload * 10))
-    #
-    #     self.frame = ('*#4*%s*#14*%s*%s##' % self.where, temperature, mode).encode()
-    #
-    #     self.send_frame()
-    #     response_frames = self.own_instance.read_socket()
-    #
-    #     # if response_frames[0] == self.own_instance.ACK.decode():
-    #     #     self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/mode/current', payload=self.payload, qos=0, retain=True)

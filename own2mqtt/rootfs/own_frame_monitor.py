@@ -2,6 +2,7 @@ import regex
 import logging
 from time import time
 
+
 class OWNFrameMonitor:
     def __init__(self, frame, own_instance):
         self.frame = frame
@@ -31,7 +32,7 @@ class OWNFrameMonitor:
             if state_request_match:
                 self.type_state_request(state_request_match)
             else:
-                dimension_request_regex = r"^\*#(?P<who>\d+)\*(?P<where>\d+)\*(?P<dimension>\d+)\*?((?P<dimension_value>\d+)\*?)*##$"
+                dimension_request_regex = r"^\*#(?P<who>\d+)\*(?P<where>\d+(#\d+)?)\*(?P<dimension>\d+)\*?((?P<dimension_value>\d+)\*?)*##$"
                 dimension_request_match = regex.search(dimension_request_regex, self.frame)
                 if dimension_request_match:
                     self.type_dimension_request(dimension_request_match)
@@ -92,7 +93,8 @@ class OWNFrameMonitor:
 
     def mqtt_state_command_who_1(self):
         if self.what == '34':
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/presence", payload='ON', qos=0, retain=False)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/presence", payload='ON', qos=0,
+                                     retain=False)
         else:
             if self.what == '1':
                 state = 'ON'
@@ -101,7 +103,8 @@ class OWNFrameMonitor:
             else:
                 state = self.what
                 logging.debug(self.__explain_state_command_frame())
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/state", payload=state, qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/state", payload=state, qos=0,
+                                     retain=True)
 
     def mqtt_state_command_who_2(self):
         if self.what == '1000':
@@ -114,7 +117,8 @@ class OWNFrameMonitor:
             else:
                 state = self.what_param
                 logging.debug(self.__explain_state_command_frame())
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=0,
+                                     retain=True)
 
     def mqtt_state_command_who_4(self):
         if self.what == '4002':
@@ -126,10 +130,10 @@ class OWNFrameMonitor:
                 mode = 'cool'
             else:
                 mode = 'off'
-            self.own_instance.thermo_zones[self.where]['current_mode'] = mode
-            self.own_instance.thermo_zones[self.where]['raw_mode'] = self.what
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/mode/current", payload=mode, qos=0, retain=True)
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/mode/raw", payload=self.what, qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/mode/current", payload=mode,
+                                     qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/mode/raw", payload=self.what,
+                                     qos=0, retain=True)
 
     def mqtt_state_command_who_25(self):
         if self.what == '21':
@@ -143,7 +147,8 @@ class OWNFrameMonitor:
         else:
             pressure = self.what
             logging.debug(self.__explain_state_command_frame())
-        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-25/{pressure}", payload=f"{self.where}-{self.what_param[0]}", qos=0,
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-25/{pressure}",
+                                 payload=f"{self.where}-{self.what_param[0]}", qos=0,
                                  retain=False)
         self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-25/{self.where}/{self.what_param[0]}/{pressure}",
                                  payload=int(time() * 1000), qos=0, retain=False)
@@ -177,32 +182,56 @@ class OWNFrameMonitor:
             state = self.dimension_list['shutterStatus']
 
         self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=0, retain=True)
-        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/position", payload=self.dimension_list['shutterLevel'],
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/position",
+                                 payload=self.dimension_list['shutterLevel'],
                                  qos=0, retain=True)
 
         logging.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_4(self):
         if self.dimension == '0':
-            temperature = int(self.dimension_value[0]) / 10.0
+            temperature = str_temp_to_float(self.dimension_value[0])
             self.dimension_list = {
                 'temperature': temperature,
             }
-            self.own_instance.thermo_zones[self.where]['current_temperature'] = temperature
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/current", payload=self.dimension_list['temperature'], qos=0, retain=True)
-        if self.dimension == '14':
-            temperature = int(self.dimension_value[0]) / 10.0
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/current",
+                                     payload=self.dimension_list['temperature'], qos=0, retain=True)
+        if self.dimension == '12':
+            temperature = str_temp_to_float(self.dimension_value[0])
             self.dimension_list = {
                 'target_temperature': temperature,
             }
-            self.own_instance.thermo_zones[self.where]['target_temperature'] = temperature
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target", payload=self.dimension_list['target_temperature'], qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target",
+                                     payload=self.dimension_list['target_temperature'], qos=0, retain=True)
+        if self.dimension == '14':
+            temperature = str_temp_to_float(self.dimension_value[0])
+            self.dimension_list = {
+                'target_temperature': temperature,
+            }
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target",
+                                     payload=self.dimension_list['target_temperature'], qos=0, retain=True)
+        if self.dimension == '19':
+            self.dimension_list = {
+                'conditioning': int(self.dimension_value[0]),
+                'status': int(self.dimension_value[1]),
+            }
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/valves/{self.where}/conditioning",
+                                     payload=self.dimension_list['conditioning'], qos=0, retain=True)
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/valves/{self.where}/status",
+                                     payload=self.dimension_list['status'], qos=0, retain=True)
+        if self.dimension == '20':
+            zone, actuator = self.where.split('#')
+            self.dimension_list = {
+                'status': int(self.dimension_value[0])
+            }
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/actuators/{actuator}/{zone}/status",
+                                     payload=self.dimension_list['status'], qos=0, retain=True)
         logging.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_18(self):
         if self.dimension == '113':
-
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/activepower", payload=self.dimension_value[0], qos=0,
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/activepower",
+                                     payload=self.dimension_value[0], qos=0,
                                      retain=True)
 
     def __explain_state_command_frame(self):
@@ -219,3 +248,8 @@ class OWNFrameMonitor:
     def __explain_dimension_write_frame(self):
         return "TYPE: DIMENSION_WRITE | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s (%s)" % (
             self.who, self.where, self.dimension, ', '.join(self.dimension_value), self.frame)
+
+
+def str_temp_to_float(temp_str):
+    temp_float = int(temp_str) / 10.0
+    return temp_float
