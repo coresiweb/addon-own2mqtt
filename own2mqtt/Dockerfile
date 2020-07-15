@@ -14,7 +14,7 @@ COPY requirements.txt /tmp/
 RUN \
     apk add --no-cache --virtual .build-dependencies \
       gcc=9.2.0-r3 \
-      musl-dev=1.1.24-r0 \
+      musl-dev=1.1.24-r2 \
     && pip install -r /tmp/requirements.txt \
     && apk del --purge .build-dependencies
 
