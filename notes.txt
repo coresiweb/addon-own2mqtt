@@ -1,7 +1,0 @@
-Comando Hassio Builder
-
-docker run --rm --privileged -v ~/.docker:/root/.docker -v /Users/marcolettica/hassio-addons/addon-own2mqtt/own2mqtt:/data homeassistant/amd64-builder --all -t /data
-
-docker run -it --rm hassioaddons/repository-updater:latest --token 2b0ccd1f92c0a0b24b22978a66f26a12214a9e4a --repository "coresiweb/ha-addons-repository"
-
-repository-updater  --token 2b0ccd1f92c0a0b24b22978a66f26a12214a9e4a --repository "coresiweb/ha-addons-repository"
