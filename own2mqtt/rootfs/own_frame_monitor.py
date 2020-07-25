@@ -229,10 +229,27 @@ class OWNFrameMonitor:
         logging.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_18(self):
-        if self.dimension == '113':
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/activepower",
+        self.where = self.where.replace('#0', '')
+        if self.dimension == '51':
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/total_energy",
                                      payload=self.dimension_value[0], qos=0,
                                      retain=True)
+        if self.dimension == '53':
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/currrent_month_energy",
+                                     payload=self.dimension_value[0], qos=0,
+                                     retain=True)
+        if self.dimension == '54':
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/currrent_day_energy",
+                                     payload=self.dimension_value[0], qos=0,
+                                     retain=True)
+        if self.dimension == '72':
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/currrent_day_energy",
+                                     payload=self.dimension_value[0], qos=0,
+                                     retain=True)
+        if self.dimension == '113':
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/active_power",
+                                     payload=self.dimension_value[0], qos=0,
+                                     retain=False)
 
     def __explain_state_command_frame(self):
         return "TYPE: STATE_COMMAND | WHO: %s | WHAT: %s | WHAT_PARAM: %s | WHERE: %s | WHERE_PARAM: %s (%s)" % (
