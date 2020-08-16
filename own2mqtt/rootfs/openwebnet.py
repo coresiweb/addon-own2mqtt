@@ -109,8 +109,11 @@ class OpenWebNet(threading.Thread):
 
     def send_keep_alive(self):
         self.write_socket(self.KEEP_ALIVE)
-        self.read_socket()
-        self.keep_alive_timer.reset()
+        frames = self.read_socket()
+        if len(frames) > 0:
+            self.keep_alive_timer.reset()
+        else:
+            self.run()
 
     def total_energy_query(self):
         for (f520_id) in self.f520_ids:
@@ -165,7 +168,7 @@ class OpenWebNet(threading.Thread):
             data_received = ''
             while not data_received.endswith('##'):
                 data_received = data_received + self.sock.recv(64).decode()
-            return regex.findall(r"\*[#]?[\d\*]+[#]?[\d\*]+##", data_received)
+            return regex.findall(r"\*#?[\d\*]*#?0?[\d\*]+#?[\d\*]*##", data_received)
         except ConnectionResetError as e:
             self.run()
 
