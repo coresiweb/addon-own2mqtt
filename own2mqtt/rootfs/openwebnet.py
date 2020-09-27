@@ -27,7 +27,7 @@ class OpenWebNet(threading.Thread):
         self.AUTH_START = b'*98*2##'
         self.SET_COMMAND = b'*99*0##'
         self.SET_MONITOR = b'*99*1##'
-        self.KEEP_ALIVE = self.ACK
+        self.KEEP_ALIVE = b'*#13**22##'
         self.type_of = type_of
         self.mqtt_client = mqtt_client
         self.mqtt_base_topic = options['mqtt_base_topic']
@@ -39,9 +39,13 @@ class OpenWebNet(threading.Thread):
         self.f522_ids = options['f522_ids']
         self.sock = None
         self.keep_alive_timer = None
+        self.debug = options['debug']
 
     def run(self):
         try:
+            if self.sock:
+                self.sock.close()
+
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             logging.info('Starting %s session with %s', self.type_of, self.own_server_address)
 
@@ -60,21 +64,26 @@ class OpenWebNet(threading.Thread):
                     self.sock.send(self.ACK)
 
                     if self.__authenticate():
-                        logging.info('%s started', self.type_of)
-
                         if self.type_of == TYPE_OF_MONITOR:
                             self.monitor()
                         elif self.type_of == TYPE_OF_COMMAND:
                             self.command()
+                        logging.info('%s started', self.type_of)
         except Exception as e:
+            if self.debug:
+                raise
             self.run()
 
     def monitor(self):
+        # If no frame received restart the monitor
+        self.keep_alive_timer = ResettableTimer(25.0, self.run)
+        self.keep_alive_timer.start()
+
         # Send command requests
-        self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=b'*#1*0##', qos=0, retain=False)
+        self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=b'*#1*0##', qos=1, retain=False)
 
         for thermo_zone in self.thermo_zones.keys():
-            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=('*#4*%s##' % thermo_zone).encode(), qos=0, retain=False)
+            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=('*#4*%s##' % thermo_zone).encode(), qos=1, retain=False)
 
         self.total_energy_query()
         self.f522_start_power_request()
@@ -83,6 +92,7 @@ class OpenWebNet(threading.Thread):
         while True:
             frames = self.read_socket()
             for frame in frames:
+                self.keep_alive_timer.reset()
                 OWNFrameMonitor(frame, self)
                 self.mqtt_client.publish(f'{self.mqtt_base_topic}/last_frame', payload=frame, qos=0, retain=False)
 
@@ -105,9 +115,9 @@ class OpenWebNet(threading.Thread):
     def on_message(self, client, userdata, message):
         logging.debug('MQTT: TOPIC: %s | PAYLOAD: %s', message.topic, message.payload)
         OWNFrameCommand(self, message.topic, message.payload)
-        self.keep_alive_timer.reset()
 
     def send_keep_alive(self):
+        logging.debug('KA')
         self.write_socket(self.KEEP_ALIVE)
         frames = self.read_socket()
         if len(frames) > 0:
@@ -117,14 +127,14 @@ class OpenWebNet(threading.Thread):
 
     def total_energy_query(self):
         for (f520_id) in self.f520_ids:
-            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*5{f520_id}*51##', qos=0, retain=False)
-            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*5{f520_id}*53##', qos=0, retain=False)
-            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*5{f520_id}*54##', qos=0, retain=False)
+            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*5{f520_id}*51##', qos=1, retain=False)
+            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*5{f520_id}*53##', qos=1, retain=False)
+            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*5{f520_id}*54##', qos=1, retain=False)
         threading.Timer(self.query_interval['total_energy_query'], self.total_energy_query).start()
 
     def f522_start_power_request(self):
         for (f522_id) in self.f522_ids:
-            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*7{f522_id}#0*#1200#1*1##', qos=0, retain=False)
+            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*7{f522_id}#0*#1200#1*1##', qos=1, retain=False)
 
     def __authenticate(self):
         logging.info('Authenticating...')
@@ -170,11 +180,13 @@ class OpenWebNet(threading.Thread):
                 data_received = data_received + self.sock.recv(64).decode()
             return regex.findall(r"\*#?[\d\*]*#?0?[\d\*]+#?[\d\*]*##", data_received)
         except ConnectionResetError as e:
+            if self.debug:
+                raise
             self.run()
 
     def write_socket(self, content):
         try:
-            self.sock.send(self.KEEP_ALIVE)
+            self.sock.send(content)
         except BrokenPipeError as e:
             self.run()
 

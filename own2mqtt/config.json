@@ -22,6 +22,7 @@
     "mqtt_server_user": "",
     "mqtt_server_password": "",
     "log_level": "INFO",
+    "debug": false,
     "mqtt_client_name": "own2mqtt",
     "mqtt_base_topic": "openwebnet",
     "thermo_zones": [],
@@ -40,6 +41,7 @@
     "mqtt_server_user": "str",
     "mqtt_server_password": "str",
     "log_level": "match(^(TRACE|DEBUG|INFO|NOTICE|WARNING|ERROR|FATAL)$)?",
+    "debug": "bool",
     "mqtt_client_name": "str",
     "mqtt_base_topic": "str",
     "thermo_zones": [

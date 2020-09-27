@@ -32,7 +32,7 @@ class OWNFrameCommand:
                 self.send_frame_who_4()
 
     def send_frame(self):
-        logging.debug('TX: %s' % self.frame)
+        logging.debug('TX: %s' % self.frame.decode())
         self.own_instance.sock.send(self.frame)
 
     def read_response(self):
@@ -52,7 +52,7 @@ class OWNFrameCommand:
 
         if response_frames[0] == self.own_instance.ACK.decode():
             self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-1/{self.where}/state',
-                                                  payload=self.payload, qos=0, retain=True)
+                                                  payload=self.payload, qos=1, retain=True)
 
     def send_frame_who_2(self):
         self.where = self.topic_parts[2]
@@ -91,8 +91,8 @@ class OWNFrameCommand:
             response_frames = self.own_instance.read_socket()
 
             if response_frames[0] == self.own_instance.ACK.decode():
-                self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/mode/current', payload=self.payload, qos=0, retain=True)
-                self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=default_temperature, qos=0, retain=True)
+                self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/mode/current', payload=self.payload, qos=1, retain=True)
+                self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=default_temperature, qos=1, retain=True)
 
         if self.topic_parts[4] == 'temperature':
             temperature_str = int(float(self.payload.decode()) * 10.0)
@@ -101,4 +101,4 @@ class OWNFrameCommand:
             response_frames = self.own_instance.read_socket()
 
             if response_frames[0] == self.own_instance.ACK.decode():
-                self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=self.payload, qos=0, retain=True)
+                self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=self.payload, qos=1, retain=True)
