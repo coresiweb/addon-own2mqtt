@@ -5,6 +5,7 @@ import os
 import regex
 import socket
 import threading
+import paho.mqtt.client as mqtt
 
 from resettabletimer import ResettableTimer
 
@@ -15,8 +16,8 @@ TYPE_OF_MONITOR = 'MONITOR'
 TYPE_OF_COMMAND = 'COMMAND'
 
 
-class OpenWebNet(threading.Thread):
-    def __init__(self, type_of, mqtt_client, options):
+class OpenWebNet:
+    def __init__(self, options):
         threading.Thread.__init__(self)
         self.own_server_address = (options['own_server_ip'], options['own_server_port'])
         self.own_password = options['own_server_password']
@@ -28,102 +29,116 @@ class OpenWebNet(threading.Thread):
         self.SET_COMMAND = b'*99*0##'
         self.SET_MONITOR = b'*99*1##'
         self.KEEP_ALIVE = b'*#13**22##'
-        self.type_of = type_of
-        self.mqtt_client = mqtt_client
+
+        self.mqtt_client = mqtt.Client(options['mqtt_client_name'])
+        self.mqtt_client.username_pw_set(options['mqtt_server_user'], options['mqtt_server_password'])
+        self.mqtt_client.connect(options['mqtt_server_ip'], options['mqtt_server_port'])
         self.mqtt_base_topic = options['mqtt_base_topic']
+
         self.thermo_zones = {}
         for thermo_zone in options['thermo_zones']:
             self.thermo_zones[str(thermo_zone)] = {}
         self.query_interval = options['query_interval']
         self.f520_ids = options['f520_ids']
         self.f522_ids = options['f522_ids']
-        self.sock = None
-        self.keep_alive_timer = None
         self.debug = options['debug']
 
+        self.command_thread = self.monitor_thread = None
+        self.command_socket = self.monitor_socket = None
+
+        self.command_timer = ResettableTimer(25.0, self.command_keep_alive)
+        self.monitor_timer = ResettableTimer(25.0, self.monitor_start)
+
     def run(self):
-        try:
-            if self.sock:
-                self.sock.close()
 
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            logging.info('Starting %s session with %s', self.type_of, self.own_server_address)
+        self.command_thread = threading.Thread(target=self.command_start)
+        self.command_thread.start()
 
-            self.sock.connect(self.own_server_address)
-            data_received = self.sock.recv(4096)
+        self.monitor_thread = threading.Thread(target=self.monitor_start)
+        self.monitor_thread.start()
 
-            if data_received == self.ACK:
-                if self.type_of == TYPE_OF_MONITOR:
-                    self.sock.send(self.SET_MONITOR)
-                elif self.type_of == TYPE_OF_COMMAND:
-                    self.sock.send(self.SET_COMMAND)
+    def monitor_start(self):
+        logging.info('Starting MONITOR session with %s', self.own_server_address)
+        self.monitor_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.monitor_socket.connect(self.own_server_address)
+        data_received = self.monitor_socket.recv(4096)
 
-                data_received = self.sock.recv(4096)
+        if data_received == self.ACK:
+            self.monitor_socket.send(self.SET_MONITOR)
 
-                if data_received == self.AUTH_START:
-                    self.sock.send(self.ACK)
+            data_received = self.monitor_socket.recv(4096)
 
-                    if self.__authenticate():
-                        if self.type_of == TYPE_OF_MONITOR:
-                            self.monitor()
-                        elif self.type_of == TYPE_OF_COMMAND:
-                            self.command()
-                        logging.info('%s started', self.type_of)
-        except Exception as e:
-            if self.debug:
-                raise
-            self.run()
+            if data_received == self.AUTH_START:
+                self.monitor_socket.send(self.ACK)
 
-    def monitor(self):
-        # If no frame received restart the monitor
-        self.keep_alive_timer = ResettableTimer(25.0, self.run)
-        self.keep_alive_timer.start()
+                if self.__authenticate(self.monitor_socket):
+                    logging.info('MONITOR started')
+                    # If no frame received restart the monitor
+                    self.monitor_timer.start()
 
-        # Send command requests
-        self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=b'*#1*0##', qos=1, retain=False)
+                    # Send command requests
+                    self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=b'*#1*0##', qos=1, retain=False)
 
-        for thermo_zone in self.thermo_zones.keys():
-            self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=('*#4*%s##' % thermo_zone).encode(), qos=1, retain=False)
+                    for thermo_zone in self.thermo_zones.keys():
+                        self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=('*#4*%s##' % thermo_zone).encode(), qos=1, retain=False)
 
-        self.total_energy_query()
-        self.f522_start_power_request()
+                    self.total_energy_query()
+                    self.f522_start_power_request()
 
-        # Monitor each frame in socket
-        while True:
-            frames = self.read_socket()
-            for frame in frames:
-                self.keep_alive_timer.reset()
-                OWNFrameMonitor(frame, self)
-                self.mqtt_client.publish(f'{self.mqtt_base_topic}/last_frame', payload=frame, qos=0, retain=False)
+                    # Monitor each frame in socket
+                    while True:
+                        frames = self.read_socket(self.monitor_socket)
+                        for frame in frames:
+                            self.monitor_timer.reset()
+                            OWNFrameMonitor(frame, self)
+                            self.mqtt_client.publish(f'{self.mqtt_base_topic}/last_frame', payload=frame, qos=0, retain=False)
 
-    def command(self):
-        self.keep_alive_timer = ResettableTimer(25.0, self.send_keep_alive)
-        self.keep_alive_timer.start()
+    def command_start(self):
+        logging.info('Starting COMMAND session with %s', self.own_server_address)
 
-        topics = [
-            (f'{self.mqtt_base_topic}/command_frame', 0),
-            (f'{self.mqtt_base_topic}/who-1/+/command', 0),
-            (f'{self.mqtt_base_topic}/who-2/+/command', 0),
-            (f'{self.mqtt_base_topic}/who-2/+/set_position', 0),
-            (f'{self.mqtt_base_topic}/who-4/zones/+/mode/set', 0),
-            (f'{self.mqtt_base_topic}/who-4/zones/+/temperature/set', 0),
-        ]
-        self.mqtt_client.on_message = self.on_message
-        self.mqtt_client.subscribe(topics)
-        self.mqtt_client.loop_forever()
+        self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.command_socket.connect(self.own_server_address)
+        data_received = self.command_socket.recv(4096)
+
+        if data_received == self.ACK:
+            self.command_socket.send(self.SET_COMMAND)
+
+            data_received = self.command_socket.recv(4096)
+
+            if data_received == self.AUTH_START:
+                self.command_socket.send(self.ACK)
+
+                if self.__authenticate(self.command_socket):
+                    logging.info('COMMAND started')
+                    self.command_timer.start()
+
+                    topics = [
+                        (f'{self.mqtt_base_topic}/command_frame', 0),
+                        (f'{self.mqtt_base_topic}/who-1/+/command', 0),
+                        (f'{self.mqtt_base_topic}/who-2/+/command', 0),
+                        (f'{self.mqtt_base_topic}/who-2/+/set_position', 0),
+                        (f'{self.mqtt_base_topic}/who-4/zones/+/mode/set', 0),
+                        (f'{self.mqtt_base_topic}/who-4/zones/+/temperature/set', 0),
+                    ]
+                    self.mqtt_client.on_message = self.on_message
+                    self.mqtt_client.subscribe(topics)
+                    self.mqtt_client.loop_forever()
 
     def on_message(self, client, userdata, message):
         logging.debug('MQTT: TOPIC: %s | PAYLOAD: %s', message.topic, message.payload)
         OWNFrameCommand(self, message.topic, message.payload)
 
-    def send_keep_alive(self):
-        logging.debug('KA')
-        self.write_socket(self.KEEP_ALIVE)
-        frames = self.read_socket()
-        if len(frames) > 0:
-            self.keep_alive_timer.reset()
-        else:
-            self.run()
+    def command_keep_alive(self):
+        try:
+            logging.debug('KA')
+            self.command_socket.send(self.KEEP_ALIVE)
+            frames = self.read_socket(self.command_socket)
+            if len(frames) > 0:
+                self.command_timer.reset()
+            else:
+                self.command_start()
+        except BrokenPipeError:
+            self.command_start()
 
     def total_energy_query(self):
         for (f520_id) in self.f520_ids:
@@ -136,12 +151,12 @@ class OpenWebNet(threading.Thread):
         for (f522_id) in self.f522_ids:
             self.mqtt_client.publish(f'{self.mqtt_base_topic}/command_frame', payload=f'*#18*7{f522_id}#0*#1200#1*1##', qos=1, retain=False)
 
-    def __authenticate(self):
+    def __authenticate(self, current_socket):
         logging.info('Authenticating...')
         rb_hex = self.__create_rb_hex()
         rb = self.__hex_to_decimal_string(rb_hex)
         ra_search = regex.search(
-            r'\*#(\d{128})##', self.sock.recv(4096).decode())
+            r'\*#(\d{128})##', current_socket.recv(4096).decode())
         if not ra_search:
             return False
         ra_hex = self.__decimal_string_to_hex(ra_search.group(1))
@@ -157,7 +172,7 @@ class OpenWebNet(threading.Thread):
         client_digest_dec = self.__hex_to_decimal_string(client_digest)
 
         client_message = "*#%s*%s##" % (rb, client_digest_dec)
-        self.sock.send(client_message.encode())
+        current_socket.send(client_message.encode())
 
         server_hash = hashlib.new('sha256')
         server_hash.update(ra_hex.encode())
@@ -167,28 +182,18 @@ class OpenWebNet(threading.Thread):
         server_digest_dec = self.__hex_to_decimal_string(server_digest)
         server_message = "*#%s##" % server_digest_dec
 
-        if self.sock.recv(4096) == server_message.encode():
-            self.sock.send(self.ACK)
+        if current_socket.recv(4096) == server_message.encode():
+            current_socket.send(self.ACK)
             logging.info('Authenticated')
             return True
         return False
 
-    def read_socket(self):
-        try:
-            data_received = ''
-            while not data_received.endswith('##'):
-                data_received = data_received + self.sock.recv(64).decode()
-            return regex.findall(r"\*#?[\d\*]*#?0?[\d\*]+#?[\d\*]*##", data_received)
-        except ConnectionResetError as e:
-            if self.debug:
-                raise
-            self.run()
-
-    def write_socket(self, content):
-        try:
-            self.sock.send(content)
-        except BrokenPipeError as e:
-            self.run()
+    @staticmethod
+    def read_socket(current_socket):
+        data_received = ''
+        while not data_received.endswith('##'):
+            data_received = data_received + current_socket.recv(64).decode()
+        return regex.findall(r"\*#?[\d\*]*#?0?[\d\*]+#?[\d\*]*##", data_received)
 
     @staticmethod
     def __create_rb_hex():
