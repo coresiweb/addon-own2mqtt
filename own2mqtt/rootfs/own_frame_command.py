@@ -33,12 +33,10 @@ class OWNFrameCommand:
 
     def send_frame(self):
         logging.debug('TX: %s' % self.frame.decode())
-        self.own_instance.sock.send(self.frame)
+        self.own_instance.command_socket.send(self.frame)
 
     def read_response(self):
-        frames = self.own_instance.read_socket()
-        for frame in frames:
-            OWNFrameMonitor(frame, self.own_instance)
+        self.own_instance.read_socket(self.own_instance.command_socket)
 
     def send_frame_who_1(self):
         self.where = self.topic_parts[2]
@@ -48,9 +46,9 @@ class OWNFrameCommand:
             self.frame = ('*1*0*%s##' % self.where).encode()
 
         self.send_frame()
-        response_frames = self.own_instance.read_socket()
+        response_frames = self.own_instance.read_socket(self.own_instance.command_socket)
 
-        if response_frames[0] == self.own_instance.ACK.decode():
+        if self.own_instance.ACK.decode() in response_frames:
             self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-1/{self.where}/state',
                                                   payload=self.payload, qos=1, retain=True)
 
@@ -88,9 +86,9 @@ class OWNFrameCommand:
                 # Set "Antifreeze" mode inspite of "Generic OFF"
                 self.frame = f'*4*303*{self.where}##'.encode()
             self.send_frame()
-            response_frames = self.own_instance.read_socket()
+            response_frames = self.own_instance.read_socket(self.own_instance.command_socket)
 
-            if response_frames[0] == self.own_instance.ACK.decode():
+            if self.own_instance.ACK.decode() in response_frames:
                 self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/mode/current', payload=self.payload, qos=1, retain=True)
                 self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=default_temperature, qos=1, retain=True)
 
@@ -100,5 +98,5 @@ class OWNFrameCommand:
             self.send_frame()
             response_frames = self.own_instance.read_socket()
 
-            if response_frames[0] == self.own_instance.ACK.decode():
+            if self.own_instance.ACK.decode() in response_frames:
                 self.own_instance.mqtt_client.publish(f'{self.own_instance.mqtt_base_topic}/who-4/zones/{self.where}/temperature/target', payload=self.payload, qos=1, retain=True)
