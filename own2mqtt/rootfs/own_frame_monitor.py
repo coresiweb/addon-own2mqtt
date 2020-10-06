@@ -22,7 +22,6 @@ class OWNFrameMonitor:
         self.read_frame()
 
     def read_frame(self):
-        logging.debug('RX: %s', self.frame)
         state_command_regex = r"^\*(?P<who>\d+)\*(?P<what>\d+)(#(?P<what_param>\d+))*\*(?P<where>\d+)(#(?P<where_param>\d+))*##$"
         state_command_match = regex.search(state_command_regex, self.frame)
         if state_command_match:
@@ -42,6 +41,8 @@ class OWNFrameMonitor:
                     dimension_write_match = regex.search(dimension_write_regex, self.frame)
                     if dimension_write_match:
                         self.type_dimension_write(dimension_write_match)
+                    else:
+                        logging.debug('RX: %s', self.frame)
 
     def type_state_command(self, match):
         self.frame_type = 'state_command'
@@ -286,19 +287,19 @@ class OWNFrameMonitor:
                                      retain=False)
 
     def __explain_state_command_frame(self):
-        return "EX: TYPE: STATE_COMMAND | WHO: %s | WHAT: %s | WHAT_PARAM: %s | WHERE: %s | WHERE_PARAM: %s (%s)" % (
-            self.who, self.what, ', '.join(self.what_param), self.where, ', '.join(self.where_param), self.frame)
+        return "RX: %s (TYPE: STATE_COMMAND | WHO: %s | WHAT: %s | WHAT_PARAM: %s | WHERE: %s | WHERE_PARAM: %s)" % (
+            self.frame, self.who, self.what, ', '.join(self.what_param), self.where, ', '.join(self.where_param))
 
     def __explain_state_request_frame(self):
-        return "EX: TYPE: STATE_REQUEST | WHO: %s | WHERE: %s (%s)" % (self.who, self.where, self.frame)
+        return "RX: %s (TYPE: STATE_REQUEST | WHO: %s | WHERE: %s)" % (self.frame, self.who, self.where)
 
     def __explain_dimension_request_frame(self):
-        return "EX: TYPE: DIMENSION_REQUEST | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s (%s)" % (
-            self.who, self.where, self.dimension, self.dimension_list, self.frame)
+        return "RX: %s (TYPE: DIMENSION_REQUEST | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s)" % (
+            self.frame, self.who, self.where, self.dimension, self.dimension_list)
 
     def __explain_dimension_write_frame(self):
-        return "EX: TYPE: DIMENSION_WRITE | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s (%s)" % (
-            self.who, self.where, self.dimension, ', '.join(self.dimension_value), self.frame)
+        return "RX: %s (TYPE: DIMENSION_WRITE | WHO: %s | WHERE: %s | DIMENSION: %s | DIMENSION_VALUE: %s)" % (
+            self.frame, self.who, self.where, self.dimension, ', '.join(self.dimension_value))
 
 
 def str_temp_to_float(temp_str):
