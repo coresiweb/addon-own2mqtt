@@ -1,6 +1,6 @@
 {
   "name": "own2mqtt",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "slug": "own2mqtt",
   "description": "Client to OpenWebNet Server",
   "arch": [
