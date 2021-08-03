@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 
 class OWNFrameMonitor:
     def __init__(self, frame, own_instance):
+        self.logger = logging.getLogger("own2mqtt")
+
         self.frame = frame
         self.frame_type = None
         self.who = None
@@ -42,7 +44,7 @@ class OWNFrameMonitor:
                     if dimension_write_match:
                         self.type_dimension_write(dimension_write_match)
                     else:
-                        logging.debug('RX: %s', self.frame)
+                        self.logger.debug('RX: %s', self.frame)
 
     def type_state_command(self, match):
         self.frame_type = 'state_command'
@@ -51,7 +53,7 @@ class OWNFrameMonitor:
         self.what_param = match.captures('what_param')
         self.where = match.group('where')
         self.where_param = match.captures('where_param')
-        logging.debug(self.__explain_state_command_frame())
+        self.logger.debug(self.__explain_state_command_frame())
 
         if self.who == '1':
             self.mqtt_state_command_who_1()
@@ -66,7 +68,7 @@ class OWNFrameMonitor:
         self.frame_type = 'state_request'
         self.who = match.group('who')
         self.where = match.group('where')
-        logging.debug(self.__explain_state_request_frame())
+        self.logger.debug(self.__explain_state_request_frame())
 
     def type_dimension_request(self, match):
         self.frame_type = 'dimension_request'
@@ -106,7 +108,7 @@ class OWNFrameMonitor:
                 state = 'OFF'
             else:
                 state = self.what
-                logging.debug(self.__explain_state_command_frame())
+                self.logger.debug(self.__explain_state_command_frame())
             self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/state", payload=state, qos=1,
                                      retain=True)
 
@@ -120,7 +122,7 @@ class OWNFrameMonitor:
                 state = 'closed'
             else:
                 state = self.what_param
-                logging.debug(self.__explain_state_command_frame())
+                self.logger.debug(self.__explain_state_command_frame())
             self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=1,
                                      retain=True)
 
@@ -158,7 +160,7 @@ class OWNFrameMonitor:
                                      payload='off', qos=1, retain=False)
         else:
             pressure = self.what
-            logging.debug(self.__explain_state_command_frame())
+            self.logger.debug(self.__explain_state_command_frame())
         self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-25/{pressure}",
                                  payload=f"{self.where}-{self.what_param[0]}", qos=1,
                                  retain=False)
@@ -172,7 +174,7 @@ class OWNFrameMonitor:
             self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-1/{self.where}/light",
                                      payload=self.dimension_list['lightIntesity'], qos=1, retain=False)
 
-        logging.debug(self.__explain_dimension_request_frame())
+        self.logger.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_2(self):
         self.dimension_list = {
@@ -196,7 +198,7 @@ class OWNFrameMonitor:
                                  payload=self.dimension_list['shutterLevel'],
                                  qos=1, retain=True)
 
-        logging.debug(self.__explain_dimension_request_frame())
+        self.logger.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_4(self):
         if self.dimension == '0':
@@ -236,7 +238,14 @@ class OWNFrameMonitor:
             }
             self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/actuators/{actuator}/{zone}/status",
                                      payload=self.dimension_list['status'], qos=1, retain=True)
-        logging.debug(self.__explain_dimension_request_frame())
+        if self.dimension == '60':
+            humidity = str_humi_to_float(self.dimension_value[0])
+            self.dimension_list = {
+                'humidity': humidity,
+            }
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-4/zones/{self.where}/humidity/current",
+                                     payload=self.dimension_list['humidity'], qos=1, retain=True)
+        self.logger.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_13(self):
         if self.dimension == '19':
@@ -261,7 +270,7 @@ class OWNFrameMonitor:
             }
             received_datetime = datetime(self.dimension_list['year'], self.dimension_list['month'], self.dimension_list['day'], self.dimension_list['hours'], self.dimension_list['minutes'], self.dimension_list['seconds'])
             self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-13/datetime", payload=received_datetime.isoformat(), qos=1, retain=False)
-        logging.debug(self.__explain_dimension_request_frame())
+        self.logger.debug(self.__explain_dimension_request_frame())
 
     def mqtt_dimension_request_who_18(self):
         self.where = self.where.replace('#0', '')
@@ -305,3 +314,8 @@ class OWNFrameMonitor:
 def str_temp_to_float(temp_str):
     temp_float = int(temp_str) / 10.0
     return temp_float
+
+
+def str_humi_to_float(humi_str):
+    humi_float = int(humi_str) / 1.0
+    return humi_float

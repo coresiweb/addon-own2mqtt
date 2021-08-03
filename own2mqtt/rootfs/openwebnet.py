@@ -12,8 +12,11 @@ import paho.mqtt.client as mqtt
 from own_frame_command import OWNFrameCommand
 from own_frame_monitor import OWNFrameMonitor
 
+
 class OpenWebNet:
     def __init__(self, options):
+        self.logger = logging.getLogger("own2mqtt")
+
         self.own_server_address = (options['own_server_ip'], options['own_server_port'])
         self.own_password = options['own_server_password']
         self.ACK = b'*#*1##'
@@ -44,11 +47,11 @@ class OpenWebNet:
         self.command_thread = self.monitor_thread = None
         self.command_socket = self.monitor_socket = None
 
-        self.mqtt_ready = self.monitor_ready = self.command_ready = self.command_first_start = False
+        self.mqtt_ready = self.monitor_ready = self.command_ready = False
 
     def run(self):
         try:
-            logging.info('Connecting to MQTT Server %s:%s', self.mqtt_server_ip, self.mqtt_server_port)
+            self.logger.info('Connecting to MQTT Server %s:%s', self.mqtt_server_ip, self.mqtt_server_port)
             self.mqtt_client = mqtt.Client(self.mqtt_client_name, True, {'base_topic': self.mqtt_base_topic, 'own_instance': self})
             self.mqtt_client.username_pw_set(self.mqtt_server_user, self.mqtt_server_password)
             self.mqtt_client.on_connect = self.on_mqtt_connect
@@ -58,15 +61,13 @@ class OpenWebNet:
             self.mqtt_client.loop_start()
 
             self.monitor_thread = threading.Thread(target=self.monitor_start)
-            self.monitor_thread.daemon = True
             self.monitor_thread.start()
 
-            self.command_thread = threading.Thread(target=self.command_start)
-            self.command_thread.daemon = True
-            self.command_thread.start()
+            while not (self.mqtt_ready and self.monitor_ready and self.command_ready):
+                self.command_start()
 
-            self.monitor_thread.join()
-            self.command_thread.join()
+            # self.monitor_thread.join()
+            # self.command_thread.join()
 
         except (KeyboardInterrupt, SystemExit):
             self.mqtt_client.loop_stop()
@@ -74,14 +75,14 @@ class OpenWebNet:
             self.monitor_socket.close()
             self.monitor_ready = False
             self.command_socket.close()
-            self.command_ready = False
 
     def monitor_start(self):
+        logger = logging.getLogger("own2mqtt.monitor")
         while True:
             if self.mqtt_ready:
                 self.monitor_ready = False
                 try:
-                    logging.info('Starting MONITOR session with %s', self.own_server_address)
+                    self.logger.info('Starting MONITOR session with %s', self.own_server_address)
 
                     self.monitor_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     self.monitor_socket.connect(self.own_server_address)
@@ -97,21 +98,21 @@ class OpenWebNet:
 
                             if self.__authenticate(self.monitor_socket):
                                 last_frame = time.time()
-                                logging.info('MONITOR started')
+                                self.logger.info('MONITOR started')
                                 self.monitor_ready = True
 
                                 # Monitor each frame in socket
                                 while self.monitor_ready and (time.time() - last_frame) < 30:
-                                    frames = self.__read_socket(self.monitor_socket)
+                                    frames = self.read_monitor_socket()
                                     for frame in frames:
                                         last_frame = time.time()
                                         OWNFrameMonitor(frame, self)
                                         self.mqtt_client.publish(f'{self.mqtt_base_topic}/last_frame', payload=frame, qos=0, retain=False)
                                 else:
                                     self.monitor_ready = False
-                                    logging.info('MONITOR Disconnected')
+                                    self.logger.info('MONITOR Disconnected')
                 except Exception as e:
-                    logging.info(e)
+                    self.logger.info(e)
                     if self.debug:
                         if self.monitor_socket:
                             self.monitor_socket.close()
@@ -119,90 +120,79 @@ class OpenWebNet:
                         raise e
                     time.sleep(5)
 
+    def command_connect(self):
+        self.logger.info('Starting COMMAND session with %s', self.own_server_address)
+
+        self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.command_socket.connect(self.own_server_address)
+        data_received = self.command_socket.recv(4096)
+
+        if data_received == self.ACK:
+            self.command_socket.send(self.SET_COMMAND)
+
+            data_received = self.command_socket.recv(4096)
+
+            if data_received == self.AUTH_START:
+                self.command_socket.send(self.ACK)
+
+                if self.__authenticate(self.command_socket):
+                    self.logger.info('COMMAND started')
+                    self.command_ready = True
+
     def command_start(self):
-        while True:
-            if self.mqtt_ready:
-                self.command_ready = False
-                try:
-                    logging.info('Starting COMMAND session with %s', self.own_server_address)
+        self.command_connect()
 
-                    self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    self.command_socket.connect(self.own_server_address)
-                    data_received = self.command_socket.recv(4096)
+        # Send command requests
+        self.write_socket(b'*#1*0##')
 
-                    if data_received == self.ACK:
-                        self.command_socket.send(self.SET_COMMAND)
+        for thermo_zone in self.thermo_zones.keys():
+            self.write_socket(('*#4*%s##' % thermo_zone).encode())
+            self.write_socket(('*#4*%s*60##' % thermo_zone).encode())
 
-                        data_received = self.command_socket.recv(4096)
+        self.total_energy_query()
+        self.f522_start_power_request()
 
-                        if data_received == self.AUTH_START:
-                            self.command_socket.send(self.ACK)
+        # self.logger.debug('KA')
+        # self.write_socket(self.KEEP_ALIVE)
 
-                            if self.__authenticate(self.command_socket):
-                                logging.info('COMMAND started')
-                                self.command_ready = True
-                                self.command_first_start = True
-                                last_frame = time.time()
-
-                                while self.command_ready:
-                                    if self.command_first_start and self.monitor_ready:
-                                        # Send command requests
-                                        self.write_socket(b'*#1*0##')
-
-                                        for thermo_zone in self.thermo_zones.keys():
-                                            self.write_socket(('*#4*%s##' % thermo_zone).encode())
-
-                                        self.total_energy_query()
-                                        self.f522_start_power_request()
-                                        self.command_first_start = False
-
-                                    logging.debug('KA')
-                                    self.write_socket(self.KEEP_ALIVE)
-
-
-                                    frames = self.__read_socket(self.command_socket)
-                                    logging.info(frames)
-                                    if len(frames) > 0:
-                                        last_frame = time.time()
-                                    else:
-                                        self.command_ready = False
-                                else:
-                                    logging.info('COMMAND Disconnected')
-                except Exception as e:
-                    logging.info(e)
-                    if self.debug:
-                        if self.command_socket:
-                            self.command_socket.close()
-                            self.command_socket = None
-                        raise e
-                    time.sleep(5)
+        frames = self.read_command_socket()
+        self.logger.info(frames)
+        if len(frames) > 0:
+            last_frame = time.time()
+        else:
+            self.logger.info('COMMAND Disconnected')
 
     def write_socket(self, encoded_frame):
-        try:
-            if self.command_ready:
+        while True:
+            try:
                 self.command_socket.send(encoded_frame)
-                logging.debug('TX: %s' % encoded_frame.decode())
-        except Exception as e:
-            if self.debug:
-                if self.command_socket:
-                    self.command_socket.close()
-                    self.command_socket = None
-                raise e
+                self.logger.debug('TX: %s' % encoded_frame.decode())
+                break
+            except (BrokenPipeError, IOError) as e:
+                self.command_socket.close()
+                self.command_socket = None
+                self.command_ready = False
+                self.command_connect()
 
     def f522_start_power_request(self):
         for (f522_id) in self.f522_ids:
             self.write_socket(f'*#18*7{f522_id}#0*#1200#1*1##'.encode())
 
     def total_energy_query(self):
-        if self.command_ready:
-            for (f520_id) in self.f520_ids:
-                self.write_socket(f'*#18*5{f520_id}*51##'.encode())
-                self.write_socket(f'*#18*5{f520_id}*53##'.encode())
-                self.write_socket(f'*#18*5{f520_id}*54##'.encode())
+        for (f520_id) in self.f520_ids:
+            self.write_socket(f'*#18*5{f520_id}*51##'.encode())
+            self.write_socket(f'*#18*5{f520_id}*53##'.encode())
+            self.write_socket(f'*#18*5{f520_id}*54##'.encode())
         threading.Timer(self.query_interval['total_energy_query'], self.total_energy_query).start()
 
+    def read_command_socket(self):
+        return self.__read_socket(self.command_socket)
+
+    def read_monitor_socket(self):
+        return self.__read_socket(self.monitor_socket)
+
     def __authenticate(self, current_socket):
-        logging.info('Authenticating...')
+        self.logger.info('Authenticating...')
         rb_hex = self.__create_rb_hex()
         rb = self.__hex_to_decimal_string(rb_hex)
         ra_search = regex.search(
@@ -234,13 +224,14 @@ class OpenWebNet:
 
         if current_socket.recv(4096) == server_message.encode():
             current_socket.send(self.ACK)
-            logging.info('Authenticated')
+            self.logger.info('Authenticated')
             return True
         return False
 
     @staticmethod
     def on_mqtt_connect(client, userdata, flags, rc):
-        logging.info('Connected to MQTT')
+        logger = logging.getLogger("own2mqtt")
+        logger.info('Connected to MQTT')
         userdata['own_instance'].mqtt_ready = True
 
         topics = [
@@ -255,12 +246,14 @@ class OpenWebNet:
 
     @staticmethod
     def on_mqtt_disconnect(client, userdata, rc):
-        logging.info('MQTT Disconnected')
+        logger = logging.getLogger("own2mqtt")
+        logger.info('MQTT Disconnected')
         userdata['own_instance'].mqtt_ready = False
 
     @staticmethod
     def on_mqtt_message(client, userdata, message):
-        logging.debug('MQTT: TOPIC: %s | PAYLOAD: %s', message.topic, message.payload)
+        logger = logging.getLogger("own2mqtt")
+        logger.debug('MQTT: TOPIC: %s | PAYLOAD: %s', message.topic, message.payload)
         OWNFrameCommand(userdata['own_instance'], message.topic, message.payload)
 
     @staticmethod
