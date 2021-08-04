@@ -1,4 +1,4 @@
-ARG BUILD_FROM=hassioaddons/base-python:5.3.1
+ARG BUILD_FROM=hassioaddons/base-python:7.1.0
 
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
@@ -13,8 +13,8 @@ COPY requirements.txt /tmp/
 # Install requirements for add-on
 RUN \
     apk add --no-cache --virtual .build-dependencies \
-      gcc=9.3.0-r2 \
-      musl-dev=1.1.24-r9 \
+      gcc=10.3.1_git20210424-r2 \
+      musl-dev=1.2.2-r3	 \
     && pip install -r /tmp/requirements.txt \
     && apk del --purge .build-dependencies
 
