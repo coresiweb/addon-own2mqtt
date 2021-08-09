@@ -13,7 +13,7 @@
   ],
   "startup": "application",
   "boot": "auto",
-  "image": "superinj/addon-own2mqtt/{arch}",
+  "image": "superinj/{arch}-addon-own2mqtt",
   "options": {
     "own_server_ip": "",
     "own_server_port": 20000,
