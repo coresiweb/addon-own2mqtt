@@ -10,9 +10,10 @@ ENV LANG C.UTF-8
 # Copy data for add-on
 COPY requirements.txt /tmp/
 
+RUN apk update
+
 # Install requirements for add-on
-RUN \
-    apk add --no-cache --virtual .build-dependencies \
+RUN apk add --no-cache --virtual .build-dependencies \
       gcc=10.3.1_git20210424-r2 \
       musl-dev=1.2.2-r3	 \
     && pip install -r /tmp/requirements.txt \
