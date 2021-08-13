@@ -279,15 +279,15 @@ class OWNFrameMonitor:
                                      payload=self.dimension_value[0], qos=1,
                                      retain=True)
         if self.dimension == '53':
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/currrent_month_energy",
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/current_month_energy",
                                      payload=self.dimension_value[0], qos=1,
                                      retain=True)
         if self.dimension == '54':
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/currrent_day_energy",
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/current_day_energy",
                                      payload=self.dimension_value[0], qos=1,
                                      retain=True)
         if self.dimension == '72':
-            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/currrent_day_energy",
+            self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-18/{self.where}/current_day_energy",
                                      payload=self.dimension_value[0], qos=1,
                                      retain=True)
         if self.dimension == '113':
