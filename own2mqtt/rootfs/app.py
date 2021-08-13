@@ -8,8 +8,7 @@ if len(sys.argv) > 1:
     logDir = '../../log'
 else:
     options_path = '/data/options.json'
-    logDir = '/share/own2mqtt/log'
-    os.mkdir(logDir)
+    logDir = '/data/log'
 
 with open(options_path) as json_file:
     options = json.load(json_file)
