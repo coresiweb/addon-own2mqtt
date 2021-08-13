@@ -1,4 +1,4 @@
-import json, logging, sys
+import json, logging, sys, os
 from openwebnet import OpenWebNet
 
 from logging.handlers import TimedRotatingFileHandler
@@ -8,7 +8,8 @@ if len(sys.argv) > 1:
     logDir = '../../log'
 else:
     options_path = '/data/options.json'
-    logDir = '/share/own2mqtt/log'
+    logDir = '/root/share/own2mqtt/log'
+    os.mkdir(logDir)
 
 with open(options_path) as json_file:
     options = json.load(json_file)
