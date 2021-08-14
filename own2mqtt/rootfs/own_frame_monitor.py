@@ -185,11 +185,11 @@ class OWNFrameMonitor:
         }
 
         if self.dimension_list['shutterStatus'] == '10':
-            state = 'stop'
+            state = 'stopped'
         elif self.dimension_list['shutterStatus'] == '11':
-            state = 'open'
+            state = 'opening'
         elif self.dimension_list['shutterStatus'] == '12':
-            state = 'closed'
+            state = 'closing'
         else:
             state = self.dimension_list['shutterStatus']
 
