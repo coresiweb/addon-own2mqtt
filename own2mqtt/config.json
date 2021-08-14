@@ -1,6 +1,6 @@
 {
   "name": "own2mqtt",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "slug": "own2mqtt",
   "description": "Client to OpenWebNet Server",
   "url": "https://github.com/superinj/addon-own2mqtt",

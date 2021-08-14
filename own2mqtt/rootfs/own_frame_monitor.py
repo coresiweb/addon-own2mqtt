@@ -115,11 +115,11 @@ class OWNFrameMonitor:
     def mqtt_state_command_who_2(self):
         if self.what == '1000':
             if self.what_param == ['0']:
-                state = 'stop'
+                state = 'stopped'
             elif self.what_param == ['1']:
-                state = 'open'
+                state = 'opening'
             elif self.what_param == ['2']:
-                state = 'closed'
+                state = 'closing'
             else:
                 state = self.what_param
                 self.logger.debug(self.__explain_state_command_frame())
