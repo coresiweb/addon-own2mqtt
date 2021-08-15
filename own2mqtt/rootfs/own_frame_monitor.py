@@ -193,10 +193,10 @@ class OWNFrameMonitor:
         else:
             state = self.dimension_list['shutterStatus']
 
-        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=1, retain=True)
         self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/position",
                                  payload=self.dimension_list['shutterLevel'],
                                  qos=1, retain=True)
+        self.mqtt_client.publish(f"{self.mqtt_base_topic}/who-2/{self.where}/state", payload=state, qos=1, retain=True)
 
         self.logger.debug(self.__explain_dimension_request_frame())
 

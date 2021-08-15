@@ -152,9 +152,6 @@ class OpenWebNet:
         self.total_energy_query()
         self.f522_start_power_request()
 
-        # self.logger.debug('KA')
-        # self.write_socket(self.KEEP_ALIVE)
-
         frames = self.read_command_socket()
         self.logger.info(frames)
         if len(frames) > 0:
@@ -173,6 +170,7 @@ class OpenWebNet:
                 self.command_socket = None
                 self.command_ready = False
                 self.command_connect()
+                self.write_socket(encoded_frame)
 
     def f522_start_power_request(self):
         for (f522_id) in self.f522_ids:
