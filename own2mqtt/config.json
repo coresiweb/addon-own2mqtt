@@ -4,7 +4,7 @@
   "slug": "own2mqtt",
   "description": "Client to OpenWebNet Server",
   "url": "https://github.com/superinj/addon-own2mqtt",
-  "map": ["share:rw"],
+  "map": ["addons:rw"],
   "arch": [
     "aarch64",
     "amd64",
